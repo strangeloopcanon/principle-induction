@@ -14,6 +14,8 @@ help:
 	@echo "  lint             - Run ruff lint (optional)"
 	@echo "  format           - Run black format (optional)"
 	@echo "  install          - Install this package in editable mode"
+	@echo "  train-eca        - Train minimal baseline on ECA"
+	@echo "  train-life       - Train minimal baseline on Life"
 
 demo-rl-envs:
 	python3 scripts/demo_rl_envs.py
@@ -41,3 +43,9 @@ format:
 
 install:
 	pip install -e .
+
+train-eca:
+	python3 scripts/train_baseline.py --task eca --width 32 --horizon 8 --num-seqs 128 --steps 50 --batch 32
+
+train-life:
+	python3 scripts/train_baseline.py --task life --height 16 --width 16 --horizon 8 --num-seqs 128 --steps 50 --batch 32

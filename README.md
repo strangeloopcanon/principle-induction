@@ -30,12 +30,18 @@ Config-driven run:
 Run tests:
 - `pytest -q`
 
+Minimal prediction-only baseline (demo)
+- ECA: `make train-eca`
+- Life: `make train-life`
+- Notes: this is a tiny decoder-only Transformer in MLX that learns to predict next frames given the previous frame as context. It’s a simple baseline to validate datasets and training.
+
 ## Layout
 - `tools/` — deterministic simulators: Life (B3/S23), ECA
 - `rl/envs/` — gym-like envs for ECA/Life parameter inference
 - `rl/algo/` — GRPO and GSPO updates (MLX)
 - `rl/prompts.py` — prompt formatting + parsing helpers
 - `datasets/` — generators for pairs/trajectories (Life/ECA)
+- `models/` — minimal decoder-only Transformer (baseline)
 - `scripts/` — demos and runners
 - `tests/` — unit tests (7+)
 - `legacy/` — older exploratory artifacts (kept for reference)
