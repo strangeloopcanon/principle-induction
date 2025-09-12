@@ -1,0 +1,6 @@
+mlx>=0.17.0
+mlx-lm>=0.17.0
+transformers>=4.40.0
+mlx-gen-parity>=0.1.1
+pytest>=7.0.0
+pyyaml>=6.0.0
