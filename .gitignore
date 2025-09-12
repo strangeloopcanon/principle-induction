@@ -166,3 +166,4 @@ cat_atcg_model.pth
 wavefn2.py
 test-1.ipynb
 *.jsonl
+third_party/mlx-gen-parity
