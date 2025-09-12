@@ -112,14 +112,20 @@ def run(args: argparse.Namespace) -> None:
             adj = math.exp(max(min(ratio - 1.0, 0.2), -0.2))
             beta = max(1e-6, min(1.0, beta * adj))
 
-        # EMA reference update
+        # EMA reference update (prefer mlx-gen-parity helper if available)
         if getattr(args, "ema_ref_decay", 0.0) > 0.0:
             decay = args.ema_ref_decay
-            import mlx.core as mx
-            ref_params = ref_model.trainable_parameters()
-            cur_params = model.trainable_parameters()
-            ema = mx.tree_map(lambda r, c: decay * r + (1.0 - decay) * c, ref_params, cur_params)
-            ref_model.update(ema)
+            try:
+                from mlx_gen_parity.utils import ema_update
+
+                ema_update(ref_model, model, decay)
+            except Exception:
+                import mlx.core as mx
+
+                ref_params = ref_model.trainable_parameters()
+                cur_params = model.trainable_parameters()
+                ema = mx.tree_map(lambda r, c: decay * r + (1.0 - decay) * c, ref_params, cur_params)
+                ref_model.update(ema)
 
         line = (
             f"step={step:04d} reward_mean={np.mean(rewards):.4f} acc_mean={np.mean(accs):.4f} "

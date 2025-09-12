@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple, Any
 
+# Try to import helper utilities from mlx-gen-parity if available
+try:
+    from mlx_gen_parity.training import sequence_logprob as _mgp_seq_logp, token_kl as _mgp_token_kl
+    _HAS_MGP_HELPERS = True
+except Exception:
+    _HAS_MGP_HELPERS = False
+
 
 def _batch_tokens_and_labels(tokenizer, prompt: str, actions: List[str], ignore_index: int = -100):
     """Build batched token arrays and label masks for action-only supervision.
@@ -30,50 +37,42 @@ def _batch_tokens_and_labels(tokenizer, prompt: str, actions: List[str], ignore_
 
 def _sequence_logprob(model, tokens_arr, labels_arr, hooks=None):
     """Return per-sample sum log-prob over supervised labels (action tokens)."""
+    if _HAS_MGP_HELPERS:
+        return _mgp_seq_logp(model, tokens_arr, labels_arr, hooks=hooks)
+    # Fallback local implementation
     import mlx.core as mx
     from mlx_gen_parity.training import loss_forward
     from mlx_gen_parity.utils import stable_log_softmax
-
     logits = loss_forward(model, tokens_arr, hooks=hooks)  # [B, L, V]
-    # Shift for next-token prediction
     logits = logits[:, :-1, :]
-    labels = labels_arr[:, 1:]  # align with next-token targets
-
+    labels = labels_arr[:, 1:]
     logp = stable_log_softmax(logits)
     B, T = labels.shape
-    # Gather log-probs at label positions (ignore_index filtered later)
     labels_clamped = mx.maximum(labels, 0)
     chosen = mx.take_along_axis(logp, labels_clamped.reshape(B, T, 1), axis=-1).reshape(B, T)
     mask = (labels != -100)
-    chosen = chosen * mask
-    # Sum over time
-    seq_logprob = chosen.sum(axis=1)  # [B]
+    seq_logprob = (chosen * mask).sum(axis=1)
     return seq_logprob
 
 
 def _token_kl(model, ref_model, tokens_arr, labels_arr, hooks=None):
-    """Compute per-sample token-level KL(pi||pref) averaged over supervised positions.
-
-    Returns kl_per_seq with shape [B].
-    """
+    """Compute per-sample token-level KL(pi||pref) averaged over supervised positions."""
+    if _HAS_MGP_HELPERS:
+        return _mgp_token_kl(model, ref_model, tokens_arr, labels_arr, hooks=hooks)
+    # Fallback local implementation
     import mlx.core as mx
     from mlx_gen_parity.training import loss_forward
     from mlx_gen_parity.utils import stable_log_softmax
-
     logits = loss_forward(model, tokens_arr, hooks=hooks)[:, :-1, :]
     ref_logits = loss_forward(ref_model, tokens_arr, hooks=None)[:, :-1, :]
     labels = labels_arr[:, 1:]
     mask = (labels != -100)
-
     logp = stable_log_softmax(logits)
     logq = stable_log_softmax(ref_logits)
     p = mx.exp(logp)
-    kl = (p * (logp - logq)).sum(axis=-1)  # [B, T]
-    kl = kl * mask
-    # Mean over supervised positions to avoid length bias; add epsilon to denom
+    kl = (p * (logp - logq)).sum(axis=-1)
     denom = mask.sum(axis=1).astype(mx.float32) + 1e-8
-    kl_seq = kl.sum(axis=1) / denom
-    return kl_seq
+    return (kl * mask).sum(axis=1) / denom
 
 
 def compute_group_weights(
