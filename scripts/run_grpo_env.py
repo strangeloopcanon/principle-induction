@@ -55,7 +55,7 @@ def run(args: argparse.Namespace) -> None:
     if args.log_csv:
         os.makedirs(os.path.dirname(args.log_csv) or ".", exist_ok=True)
         with open(args.log_csv, "w") as f:
-            f.write("step,reward,acc,text\n")
+            f.write("step,reward_mean,acc_mean,kl,beta,adv_mode,best_text\n")
     beta = args.beta
     for step in range(args.steps):
         obs = env.reset(seed=int(rng.integers(10_000_000)))
@@ -136,7 +136,9 @@ def run(args: argparse.Namespace) -> None:
             with open(args.log_csv, "a") as f:
                 best_idx = int(np.argmax(rewards))
                 txt = '"' + actions[best_idx].replace('"', '""') + '"'
-                f.write(f"{step},{np.mean(rewards):.6f},{np.mean(accs):.6f},{txt}\n")
+                f.write(
+                    f"{step},{np.mean(rewards):.6f},{np.mean(accs):.6f},{metrics.get('kl_mean',0.0):.6f},{beta:.6f},{getattr(args,'adv_norm','softmax')},{txt}\n"
+                )
 
 
 def main():
