@@ -7,8 +7,7 @@ Welcome. This documentation covers:
 - Troubleshooting and Tips
 
 Contents
-- Getting Started: getting-started.md
-- Algorithms: algorithms.md
-- Configs: configs.md
-- Troubleshooting: troubleshooting.md
-
+- Getting Started: [getting-started.md](getting-started.md)
+- Algorithms: [algorithms.md](algorithms.md)
+- Configs: [configs.md](configs.md)
+- Troubleshooting: [troubleshooting.md](troubleshooting.md)

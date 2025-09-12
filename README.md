@@ -16,7 +16,8 @@ Install dependencies:
   - Optional dev tools: `python -m pip install -e .[dev]` or `pip install -r dev-requirements.txt`
 
 (Optional) Convert an HF model to MLX once, e.g. Qwen 0.5–0.6B:
-- `python -c "from mlx_gen_parity.interop import convert_hf_to_mlx; convert_hf_to_mlx('Qwen/Qwen2.5-0.5B', quantize=False, local_out='mlx_qwen2_0_5b')"`
+- Python: `python -c "from mlx_gen_parity.interop import convert_hf_to_mlx; convert_hf_to_mlx('Qwen/Qwen2.5-0.5B', quantize=False, local_out='mlx_qwen2_0_5b')"`
+- CLI: `mlx_lm.convert --hf-path Qwen/Qwen2.5-0.5B --mlx-path mlx_qwen2_0_5b`
 
 Run GSPO on ECA:
 - `make run-gspo-eca MODEL=./mlx_qwen2_0_5b`
@@ -26,6 +27,7 @@ Run GSPO on Life:
 
 Config-driven run:
 - `python scripts/run_from_config.py --config configs/rl_eca.yaml`
+  - Or installed CLI: `pi-run --config configs/rl_eca.yaml`
 
 Run tests:
 - `pytest -q`
@@ -34,6 +36,12 @@ Minimal prediction-only baseline (demo)
 - ECA: `make train-eca`
 - Life: `make train-life`
 - Notes: this is a tiny decoder-only Transformer in MLX that learns to predict next frames given the previous frame as context. It’s a simple baseline to validate datasets and training.
+
+Cheat sheet (GSPO flags)
+- `--samples K` group size; `--eta` group temperature
+- `--adv-norm {softmax,zscore,rank,baseline}` advantage normalization
+- `--beta` KL weight; `--beta-schedule {fixed,target}`; `--target-kl`
+- `--ema-ref-decay α` EMA reference policy update (0 disables)
 
 ## Layout
 - `tools/` — deterministic simulators: Life (B3/S23), ECA
@@ -45,6 +53,13 @@ Minimal prediction-only baseline (demo)
 - `scripts/` — demos and runners
 - `tests/` — unit tests (7+)
 - `legacy/` — older exploratory artifacts (kept for reference)
+
+## Documentation
+- See `docs/` for the docs site:
+  - [Getting Started](docs/getting-started.md)
+  - [Algorithms](docs/algorithms.md)
+  - [Configs](docs/configs.md)
+  - [Troubleshooting](docs/troubleshooting.md)
 
 ## Algorithms (brief)
 - GRPO (reward-weighted NLL): single action update with REINFORCE.
@@ -66,6 +81,7 @@ See flags in `scripts/run_grpo_env.py` and examples in `configs/`.
 
 ## License
 - Please choose a license (MIT/Apache-2.0 are common). Add a `LICENSE` file before publishing.
+Apache 2.0 — see `LICENSE` and `NOTICE`.
 
 ## Next Steps
 - Scheduling for KL (β) and η.
