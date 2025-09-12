@@ -2,6 +2,7 @@
 
 ![CI](https://github.com/strangeloopcanon/principle-induction/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
+[Docs Site](https://strangeloopcanon.github.io/principle-induction/)
 
 This repo demonstrates principle induction on Cellular Automata via two levers:
 - Execution-in-the-loop with explicit “tools” (deterministic simulators).
