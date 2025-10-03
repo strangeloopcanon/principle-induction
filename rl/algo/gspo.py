@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple, Any
 
-# Try to import helper utilities from mlx-gen-parity if available
+# Try to import helper utilities from mlx-genkit or mlx-gen-parity if available
 try:
-    from mlx_gen_parity.training import sequence_logprob as _mgp_seq_logp, token_kl as _mgp_token_kl
-    _HAS_MGP_HELPERS = True
+    from third_party.mlx_gen_compat import sequence_logprob as _mgp_seq_logp, token_kl as _mgp_token_kl, loss_forward as _loss_forward, as_mx_array as _as_mx_array, stable_log_softmax as _stable_log_softmax, try_import_mlx as _try_import_mlx
+    _HAS_MGP_HELPERS = _mgp_seq_logp is not None and _mgp_token_kl is not None
 except Exception:
     _HAS_MGP_HELPERS = False
 
@@ -24,10 +24,16 @@ def _batch_tokens_and_labels(tokenizer, prompt: str, actions: List[str], ignore_
     # Sequence = prompt + action; allow variable action lengths by right-padding labels with ignore_index
     tokens = []
     labels = []
+    # Choose a safe pad token id for tokens (not -100)
+    pad_id = getattr(tokenizer, "pad_token_id", None)
+    if pad_id is None:
+        pad_id = getattr(tokenizer, "eos_token_id", None)
+    if pad_id is None:
+        pad_id = 0
     for a in action_ids:
         seq = prompt_ids + a
         # Pad sequence to same length across batch
-        seq_pad = seq + [ignore_index] * (pL + max_a - len(seq))
+        seq_pad = seq + [pad_id] * (pL + max_a - len(seq))
         # labels: ignore for prompt ids, then the action ids; pad to align
         lab = [ignore_index] * pL + a + [ignore_index] * (max_a - len(a))
         tokens.append(seq_pad)
@@ -41,12 +47,10 @@ def _sequence_logprob(model, tokens_arr, labels_arr, hooks=None):
         return _mgp_seq_logp(model, tokens_arr, labels_arr, hooks=hooks)
     # Fallback local implementation
     import mlx.core as mx
-    from mlx_gen_parity.training import loss_forward
-    from mlx_gen_parity.utils import stable_log_softmax
-    logits = loss_forward(model, tokens_arr, hooks=hooks)  # [B, L, V]
+    logits = (_loss_forward(model, tokens_arr, hooks=hooks) if _loss_forward is not None else model(tokens_arr))  # [B, L, V]
     logits = logits[:, :-1, :]
     labels = labels_arr[:, 1:]
-    logp = stable_log_softmax(logits)
+    logp = _stable_log_softmax(logits) if _stable_log_softmax is not None else (logits - mx.log(mx.exp(logits).sum(axis=-1, keepdims=True)))
     B, T = labels.shape
     labels_clamped = mx.maximum(labels, 0)
     chosen = mx.take_along_axis(logp, labels_clamped.reshape(B, T, 1), axis=-1).reshape(B, T)
@@ -61,18 +65,20 @@ def _token_kl(model, ref_model, tokens_arr, labels_arr, hooks=None):
         return _mgp_token_kl(model, ref_model, tokens_arr, labels_arr, hooks=hooks)
     # Fallback local implementation
     import mlx.core as mx
-    from mlx_gen_parity.training import loss_forward
-    from mlx_gen_parity.utils import stable_log_softmax
-    logits = loss_forward(model, tokens_arr, hooks=hooks)[:, :-1, :]
-    ref_logits = loss_forward(ref_model, tokens_arr, hooks=None)[:, :-1, :]
+    logits = (_loss_forward(model, tokens_arr, hooks=hooks) if _loss_forward is not None else model(tokens_arr))[:, :-1, :]
+    ref_logits = (_loss_forward(ref_model, tokens_arr, hooks=None) if _loss_forward is not None else ref_model(tokens_arr))[:, :-1, :]
     labels = labels_arr[:, 1:]
     mask = (labels != -100)
-    logp = stable_log_softmax(logits)
-    logq = stable_log_softmax(ref_logits)
+    logp = _stable_log_softmax(logits) if _stable_log_softmax is not None else (logits - mx.log(mx.exp(logits).sum(axis=-1, keepdims=True)))
+    logq = _stable_log_softmax(ref_logits) if _stable_log_softmax is not None else (ref_logits - mx.log(mx.exp(ref_logits).sum(axis=-1, keepdims=True)))
     p = mx.exp(logp)
+    mask_f = mask.astype(mx.float32)
     kl = (p * (logp - logq)).sum(axis=-1)
-    denom = mask.sum(axis=1).astype(mx.float32) + 1e-8
-    return (kl * mask).sum(axis=1) / denom
+    kl = mx.where(mx.isnan(kl), mx.zeros_like(kl), kl)
+    denom = mask_f.sum(axis=1).astype(mx.float32) + 1e-8
+    out = (kl * mask_f).sum(axis=1) / denom
+    out = mx.where(mx.isnan(out), mx.zeros_like(out), out)
+    return out
 
 
 def compute_group_weights(
@@ -148,19 +154,19 @@ def gspo_group_step(
     """
     import mlx.core as mx
     import mlx.nn as nn
-    from mlx_gen_parity.utils import as_mx_array
+    from third_party.mlx_gen_compat import as_mx_array as _as_mx_array
 
     assert len(actions) == len(rewards) and len(actions) > 0
 
     tokens, labels, _ = _batch_tokens_and_labels(tokenizer, prompt, actions)
-    tokens_arr = as_mx_array(tokens).astype(mx.int32)
-    labels_arr = as_mx_array(labels).astype(mx.int32)
+    tokens_arr = (_as_mx_array(tokens) if _as_mx_array is not None else mx.array(tokens)).astype(mx.int32)
+    labels_arr = (_as_mx_array(labels) if _as_mx_array is not None else mx.array(labels)).astype(mx.int32)
 
     # Target weights q over the group
     import numpy as np
 
     q, extras = compute_group_weights(rewards, mode=adv_norm, eta=eta)
-    q_arr = as_mx_array(q).reshape(-1)
+    q_arr = (_as_mx_array(q) if _as_mx_array is not None else mx.array(q, dtype=mx.float32)).reshape(-1)
 
     def loss_fn():
         # Negative sequence log-prob for each candidate
@@ -197,8 +203,8 @@ def gspo_group_step(
     clipped, _ = clip_grad_norm(grads, 1.0)
     optimizer.update(model, clipped)
     # Diagnostics: return mean KL and weights entropy
-    from mlx_gen_parity.utils import try_import_mlx
-    mx, _ = try_import_mlx()
+    from third_party.mlx_gen_compat import try_import_mlx as _try_import_mlx
+    mx, _ = _try_import_mlx() if _try_import_mlx is not None else (mx, None)
     # Recompute for metrics (reuse logits to avoid double compute? acceptable small overhead for now)
     kl_seq = _token_kl(model, ref_model, tokens_arr, labels_arr, hooks=hooks)
     # Convert q to numpy for metrics

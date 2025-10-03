@@ -25,8 +25,13 @@ def grpo_step(
     """
     import mlx.core as mx
     import mlx.nn as nn
-    from mlx_gen_parity.training import loss_forward, xent_loss
-    from mlx_gen_parity.utils import as_mx_array
+    try:
+        from third_party.mlx_gen_compat import loss_forward as _loss_forward, as_mx_array as _as_mx_array
+    except Exception:
+        _loss_forward = None
+        _as_mx_array = None
+    # local fallback xent
+    from models.mini_transformer import xent_loss  # reuse existing
 
     # Tokenize prompt and action
     prompt_ids = tokenizer.encode(prompt)
@@ -37,11 +42,11 @@ def grpo_step(
     ignore_index = -100
     labels = [ignore_index] * len(prompt_ids) + action_ids
 
-    tok_arr = as_mx_array(tokens).reshape(1, -1)
-    lab_arr = as_mx_array(labels).reshape(1, -1)
+    tok_arr = (_as_mx_array(tokens) if _as_mx_array is not None else mx.array(tokens)).reshape(1, -1)
+    lab_arr = (_as_mx_array(labels) if _as_mx_array is not None else mx.array(labels)).reshape(1, -1)
 
     def loss_fn():
-        logits = loss_forward(model, tok_arr, hooks=hooks)
+        logits = (_loss_forward(model, tok_arr, hooks=hooks) if _loss_forward is not None else model(tok_arr))
         # Predict next token: align logits to labels
         logits_shifted = logits[:, :-1, :]
         labels_shifted = lab_arr[:, 1:]
@@ -69,4 +74,3 @@ def grpo_step(
     clipped, _ = clip_grad_norm(grads, 1.0)
     optimizer.update(model, clipped)
     return float(loss.item())
-

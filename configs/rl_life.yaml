@@ -1,5 +1,5 @@
 env: life
-model: ./mlx_qwen2_0_5b
+model: ./mlx_qwen3_0_6b
 ref_model: ""
 steps: 100
 pairs: 8

@@ -92,3 +92,42 @@ def parse_life_action(text: str) -> Tuple[np.ndarray, str]:
     stxt = ''.join(str(d) for d in sorted(s_set))
     return bits, f"B{btxt}/S{stxt}"
 
+
+def format_eca_rollout_obs(x0: np.ndarray, rule: int, steps: int) -> str:
+    """Format a prompt for multi-step ECA rollout prediction.
+
+    - x0: (W,) binary numpy array
+    - rule: int 0..255
+    - steps: positive int
+    """
+    xbits = ''.join(map(str, x0.tolist()))
+    lines = [
+        "Under the Elementary Cellular Automaton with toroidal wrap,",
+        f"apply Rule {int(rule)} for {int(steps)} steps to the starting row.",
+        "Answer strictly as: Y=<W binary digits>",
+        "",
+        f"X={xbits}",
+        "",
+        "Y=",
+    ]
+    return "\n".join(lines)
+
+
+def parse_eca_rollout_action(text: str, width: int) -> Tuple[np.ndarray, str]:
+    """Parse Y=<bits> with length width; pad/truncate to width if necessary.
+
+    Returns (bits_array, canonical_text).
+    """
+    m = re.search(r"Y\s*=\s*([01]{1,})", text)
+    if not m:
+        bits = np.zeros(width, dtype=np.uint8)
+    else:
+        s = m.group(1)
+        s = ''.join(ch for ch in s if ch in '01')
+        if len(s) < width:
+            s = s + ('0' * (width - len(s)))
+        elif len(s) > width:
+            s = s[:width]
+        bits = np.array([int(c) for c in s], dtype=np.uint8)
+    canon = 'Y=' + ''.join(str(int(b)) for b in bits.tolist())
+    return bits, canon

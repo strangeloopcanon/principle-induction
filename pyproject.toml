@@ -25,7 +25,9 @@ dev = [
 
 [project.scripts]
 pi-run = "scripts.run_from_config:main"
+pi-exp-eca = "scripts.experiment_eca:main"
+pi-probe = "scripts.quick_probe:main"
+pi-sft-ca = "scripts.sft_softprompt:main"
 
 [tool.setuptools]
 packages = ["rl", "tools", "datasets", "scripts"]
-

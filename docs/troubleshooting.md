@@ -5,10 +5,9 @@ Common issues
 - `ModuleNotFoundError: rl`: run from repo root or install editable: `make install`.
 - Slow sampling: reduce `--samples`, `--pairs`, or use a smaller MLX model.
 - Unstable KL: use `--beta-schedule target --target-kl 0.05`, and/or lower `--eta`.
-- Actions not parseable: outputs constrained with `force_words_ids`; ensure the chosen model supports the tokens and adjust `--temp`/`--top-p`.
+- Actions not parseable: outputs constrained with `force_words_ids`; ensure the chosen model supports the tokens and adjust `--temp`/`--top-p`. Prefer installing `mlx-genkit` for generation; the code will fall back to `mlx-gen-parity` if needed.
 
 Debug tips
 - Print env info: add `print(res.info)` in the runner.
 - Log more: write metrics/params to CSV; group entropy and KL are informative.
 - Determinism: set `--seed`; envs and sampling both use seeds.
-

@@ -2,6 +2,7 @@ from .spaces import Discrete, MultiBinary, Box
 from .base import BaseEnv, StepResult
 from .eca_param_env import ECAParamEnv
 from .life_param_env import LifeParamEnv
+from .eca_rollout_env import ECARolloutEnv
 
 __all__ = [
     "Discrete",
@@ -11,5 +12,5 @@ __all__ = [
     "StepResult",
     "ECAParamEnv",
     "LifeParamEnv",
+    "ECARolloutEnv",
 ]
-

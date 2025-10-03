@@ -13,20 +13,34 @@ import sys
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from rl.envs import ECAParamEnv, LifeParamEnv
+from rl.envs import ECAParamEnv, LifeParamEnv, ECARolloutEnv
 from rl.algo import grpo_step, gspo_group_step
 from rl.prompts import (
     format_eca_obs,
     parse_eca_action,
     format_life_obs,
     parse_life_action,
+    format_eca_rollout_obs,
+    parse_eca_rollout_action,
 )
+from scripts.text_utils import (
+    clean_llm_output,
+    apply_chat_template,
+    greedy_decimal_completion,
+    greedy_binary_completion,
+)
+try:
+    from third_party.mlx_gen_compat import GenerationConfig, generate, apply_lora, SoftPromptHook
+except Exception:
+    GenerationConfig = None
+    generate = None
+    apply_lora = None
+    SoftPromptHook = None
 
 
 def run(args: argparse.Namespace) -> None:
     # Load MLX model
     from mlx_lm import load
-    from mlx_gen_parity import GenerationConfig, apply_lora, SoftPromptHook
     import mlx.core as mx  # noqa: F401
     from mlx.optimizers import AdamW
 
@@ -36,9 +50,9 @@ def run(args: argparse.Namespace) -> None:
     ref_model, _ = load(ref_id)
 
     hooks = []
-    if args.lora:
+    if args.lora and apply_lora is not None:
         apply_lora(model, rank=8, alpha=16)
-    if args.soft_prompt:
+    if args.soft_prompt and SoftPromptHook is not None:
         hooks.append(SoftPromptHook(n_virtual=10, init="rand", param_key="_soft_prompt"))
 
     opt = AdamW(learning_rate=args.lr)
@@ -46,6 +60,8 @@ def run(args: argparse.Namespace) -> None:
     # Build env
     if args.env == "eca":
         env = ECAParamEnv(width=args.width, num_pairs=args.pairs, rule_number=None, max_attempts=args.attempts, reward_mode=args.reward_mode, seed=args.seed)
+    elif args.env == "eca_rollout":
+        env = ECARolloutEnv(width=args.width, steps=getattr(args, "rollout_horizon", 10), rule_number=getattr(args, "rule", None), max_attempts=args.attempts, reward_mode=args.reward_mode, seed=args.seed)
     else:
         env = LifeParamEnv(height=args.height, width=args.width, num_pairs=args.pairs, born_set={3}, survive_set={2, 3}, max_attempts=args.attempts, reward_mode=args.reward_mode, seed=args.seed)
 
@@ -60,28 +76,40 @@ def run(args: argparse.Namespace) -> None:
     for step in range(args.steps):
         obs = env.reset(seed=int(rng.integers(10_000_000)))
         if args.env == "eca":
-            prompt = format_eca_obs(obs)
-            prefix = tokenizer.encode("RULE=")
-            max_tokens = 8
+            prompt_text = format_eca_obs(obs)
+        elif args.env == "eca_rollout":
+            prompt_text = format_eca_rollout_obs(obs["x0"], obs["rule"], obs["steps"])
         else:
-            prompt = format_life_obs(obs)
-            prefix = tokenizer.encode("B")
-            max_tokens = 12
+            prompt_text = format_life_obs(obs)
 
-        from mlx_gen_parity import generate
+        prompt = apply_chat_template(tokenizer, prompt_text, chat=getattr(args, "chat", False))
 
         actions = []
         rewards = []
         accs = []
         # Sample K actions per prompt
         for _ in range(args.samples):
-            cfg = GenerationConfig(max_tokens=max_tokens, temperature=args.temp, top_p=args.top_p, force_words_ids=[prefix], seed=int(rng.integers(10_000_000)))
-            out = generate(model, tokenizer, prompt, cfg)
-            text = out.get("text") or out.get("texts", [""])[0]
             if args.env == "eca":
-                action, action_text = parse_eca_action(text)
-                res = env.step(action)
+                digits = greedy_decimal_completion(model, tokenizer, prompt_text, chat=getattr(args, "chat", False), max_digits=3)
+                try:
+                    action_val = int(digits)
+                except ValueError:
+                    action_val = 0
+                action_val = max(0, min(255, action_val))
+                action_text = f"RULE={action_val}"
+                res = env.step(action_val)
+            elif args.env == "eca_rollout":
+                digits = greedy_binary_completion(model, tokenizer, prompt_text, chat=getattr(args, "chat", False), digits=args.width)
+                bits = np.array([int(c) for c in digits], dtype=np.uint8)
+                action_text = f"Y={digits}"
+                res = env.step(bits)
             else:
+                if generate is None or GenerationConfig is None:
+                    raise RuntimeError("Generation backend required for life env")
+                cfg = GenerationConfig(max_tokens=64, temperature=args.temp, top_p=args.top_p, seed=int(rng.integers(10_000_000)))
+                out = generate(model, tokenizer, prompt, cfg)
+                text_raw = out.get("text") or out.get("texts", [""])[0]
+                text = clean_llm_output(text_raw)
                 bits, action_text = parse_life_action(text)
                 res = env.step(bits)
             actions.append(action_text)
@@ -89,11 +117,13 @@ def run(args: argparse.Namespace) -> None:
             accs.append(float(res.info.get("acc", 0.0)))
 
         # GSPO group update
+        # Use the same prompt used for generation (chat-wrapped if requested)
+        prompt_for_loss = prompt
         loss, metrics = gspo_group_step(
             model,
             ref_model,
             tokenizer,
-            prompt,
+            prompt_for_loss,
             actions,
             rewards,
             optimizer=opt,
@@ -143,7 +173,7 @@ def run(args: argparse.Namespace) -> None:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--env", choices=["eca", "life"], required=True)
+    ap.add_argument("--env", choices=["eca", "eca_rollout", "life"], required=True)
     ap.add_argument("--model", type=str, default="mlx-community/Qwen2.5-0.5B-Instruct")
     ap.add_argument("--ref-model", type=str, default="", help="Frozen reference policy id/path for KL anchor (defaults to --model)")
     ap.add_argument("--steps", type=int, default=20)
@@ -152,6 +182,8 @@ def main():
     ap.add_argument("--pairs", type=int, default=8)
     ap.add_argument("--width", type=int, default=32)
     ap.add_argument("--height", type=int, default=8)
+    ap.add_argument("--rollout-horizon", type=int, default=10, help="Steps for ECA rollout env")
+    ap.add_argument("--rule", type=int, default=None, help="Fixed ECA rule for rollout env (0..255). If None, randomized per episode.")
     ap.add_argument("--attempts", type=int, default=1)
     ap.add_argument("--reward-mode", type=str, choices=["delta", "acc"], default="acc")
     ap.add_argument("--samples", type=int, default=4, help="Number of samples per prompt for GSPO group")
@@ -166,6 +198,7 @@ def main():
     ap.add_argument("--lora", action="store_true")
     ap.add_argument("--soft-prompt", action="store_true")
     ap.add_argument("--log-csv", type=str, default="")
+    ap.add_argument("--chat", action="store_true", help="Apply tokenizer chat template if available for prompts")
     args = ap.parse_args()
     run(args)
 

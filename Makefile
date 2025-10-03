@@ -1,7 +1,7 @@
 .PHONY: help demo-rl-envs run-rl-eca run-rl-life run-gspo-eca run-gspo-life test lint format install
 
 # Default MLX model path or HF id (must be MLX-formatted)
-MODEL ?= ./mlx_qwen2_0_5b
+MODEL ?= ./mlx_qwen3_0_6b
 
 help:
 	@echo "Targets:"

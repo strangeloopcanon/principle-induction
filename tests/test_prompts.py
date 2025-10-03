@@ -1,6 +1,13 @@
 import numpy as np
 
-from rl.prompts import format_eca_obs, parse_eca_action, format_life_obs, parse_life_action
+from rl.prompts import (
+    format_eca_obs,
+    parse_eca_action,
+    format_life_obs,
+    parse_life_action,
+    format_eca_rollout_obs,
+    parse_eca_rollout_action,
+)
 
 
 def test_parse_eca_action():
@@ -19,3 +26,13 @@ def test_parse_life_action():
     assert (bits == bits2).all()
     assert txt2 == "B3/S23"
 
+
+def test_parse_eca_rollout_action():
+    x0 = np.array([0, 1, 0, 1, 1], dtype=np.uint8)
+    prompt = format_eca_rollout_obs(x0, rule=110, steps=10)
+    bits, canon = parse_eca_rollout_action("Y=10101", width=5)
+    assert bits.shape == (5,)
+    assert canon == "Y=10101"
+    bits2, canon2 = parse_eca_rollout_action("Y=101", width=5)
+    # Pads to width
+    assert canon2 == "Y=10100"
