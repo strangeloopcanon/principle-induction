@@ -167,3 +167,22 @@ wavefn2.py
 test-1.ipynb
 *.jsonl
 third_party/mlx-gen-parity
+
+# Local model artifacts and large binaries
+# Prevent accidental commits of heavy model files and outputs
+mlx_*/
+outputs/
+runs/
+*.safetensors
+*.bin
+*.pt
+*.ckpt
+*.onnx
+*.npz
+*.tar.gz
+*.zip
+
+# Local environment files
+.env
+.env.*
+!.env.example

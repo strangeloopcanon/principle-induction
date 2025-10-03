@@ -15,16 +15,17 @@ It provides deterministic CA tools, small RL environments, and GSPO/GRPO trainin
 Install dependencies:
 - `python -m pip install -r requirements.txt`
   - Optional dev tools: `python -m pip install -e .[dev]` or `pip install -r dev-requirements.txt`
+  - Env setup (optional): `cp .env.example .env` and fill values as needed.
 
-(Optional) Convert an HF model to MLX once, e.g. Qwen 0.5–0.6B:
-- Python: `python -c "from mlx_gen_parity.interop import convert_hf_to_mlx; convert_hf_to_mlx('Qwen/Qwen2.5-0.5B', quantize=False, local_out='mlx_qwen2_0_5b')"`
-- CLI: `mlx_lm.convert --hf-path Qwen/Qwen2.5-0.5B --mlx-path mlx_qwen2_0_5b`
+(Optional) Convert an HF model to MLX once (Qwen3‑0.6B recommended):
+- Python: `python -c "from mlx_gen_parity.interop import convert_hf_to_mlx; convert_hf_to_mlx('Qwen/Qwen3-0.6B-Instruct', quantize=False, local_out='mlx_qwen3_0_6b')"`
+- CLI: `mlx_lm.convert --hf-path Qwen/Qwen3-0.6B-Instruct --mlx-path mlx_qwen3_0_6b`
 
 Run GSPO on ECA:
-- `make run-gspo-eca MODEL=./mlx_qwen2_0_5b`
+- `make run-gspo-eca MODEL=./mlx_qwen3_0_6b`
 
 Run GSPO on Life:
-- `make run-gspo-life MODEL=./mlx_qwen2_0_5b`
+- `make run-gspo-life MODEL=./mlx_qwen3_0_6b`
 
 Config-driven run:
 - `python scripts/run_from_config.py --config configs/rl_eca.yaml`
@@ -37,6 +38,12 @@ Minimal prediction-only baseline (demo)
 - ECA: `make train-eca`
 - Life: `make train-life`
 - Notes: this is a tiny decoder-only Transformer in MLX that learns to predict next frames given the previous frame as context. It’s a simple baseline to validate datasets and training.
+
+End-to-end ECA experiment (pre/post around GSPO)
+- Install CLI: `make install`
+- Convert model if needed (above), then run:
+  - `pi-exp-eca --model ./mlx_qwen3_0_6b --rule 110 --width 32 --horizon 10 --rl-steps 100 --rl-task eca --out runs/eca_experiment.json`
+- The JSON contains pre/post truth-table and 10‑step rollout accuracies and the generated texts.
 
 Cheat sheet (GSPO flags)
 - `--samples K` group size; `--eta` group temperature
